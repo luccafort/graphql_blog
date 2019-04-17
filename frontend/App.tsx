@@ -7,6 +7,8 @@ import { ArticleType } from "./Article";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { request } from "./client";
+import { Connection, arrayFromConnection } from "./relay";
+import { type } from "os";
 
 const mainStyle = {
   margin: 40,
@@ -24,24 +26,51 @@ export class App extends React.Component<Props, State> {
   };
 
   async componentDidMount() {
-    const result = await request<ReadonlyArray<ArticleType>>({
-      method: "GET",
-      url: "/articles",
-    });
-    this.setState({ articles: result.data });
+    const query = `
+      query GetArticles {
+        articles {
+          edges {
+            node {
+              id
+              name
+              content
+              createdAt
+            }
+          }
+        }
+      }
+    `
+
+    const result = await request<{ articles: Connection<ArticleType> }>({ query })
+    this.setState({ articles: arrayFromConnection(result.data.articles) })
   }
 
   @autobind
   async handleArticleSubmit(article: ArticleType) {
-    const result = await request<ArticleType>({
-      method: "POST",
-      url: "/articles",
-      body: { article },
-    });
+    const query = `
+      mutation createArticle($input: CreateArticleInput!) {
+        createArticle(input: $input) {
+          article {
+            id
+            name
+            content
+            createdAt
+          }
+        }
+      }
+    `
 
-    this.setState({
-      articles: [result.data, ...this.state.articles],
-    });
+    type CreateArticlePayload = { article: ArticleType }
+    const result = await request<{ createArticle: CreateArticlePayload }>({
+      query,
+      variables: {
+        input: {
+          name: article.name,
+          content: article.content
+        }
+      }
+    })
+    this.setState({ articles: [result.data.createArticle.article, ...this.state.articles] })
   }
 
   render() {
